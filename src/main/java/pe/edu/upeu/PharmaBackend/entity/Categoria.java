@@ -28,10 +28,10 @@ public class Categoria {
     @Column(nullable = false)
     private Boolean estado;
 
-    @Column(name = "fecha_creacion", nullable = false, updatable = false)
+    @Column(name = "fecha_creacion", updatable = false)
     private LocalDateTime fechaCreacion;
 
-    @Column(name = "fecha_modificación")
+    @Column(name = "fecha_modificacion")
     private LocalDateTime fechaModificacion;
 
     @PrePersist
