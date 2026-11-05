@@ -1,5 +1,8 @@
 package pe.edu.upeu.PharmaBackend.service.impl;
 
+import org.apache.commons.logging.Log;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pe.edu.upeu.PharmaBackend.dto.DetalleVentaRequestDTO;
@@ -17,12 +20,19 @@ import pe.edu.upeu.PharmaBackend.repository.ClienteRepository;
 import pe.edu.upeu.PharmaBackend.repository.ProductoRepository;
 import pe.edu.upeu.PharmaBackend.repository.VentaRepository;
 import pe.edu.upeu.PharmaBackend.service.service.VentaService;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.data.domain.Sort;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
+import java.util.Set;
+
 @Service
 public class VentaServiceImpl implements VentaService {
+    private static final Logger LOG = LoggerFactory.getLogger(VentaServiceImpl.class);
     private final VentaRepository ventaRepository;
     private final ClienteRepository clienteRepository;
     private final ProductoRepository productoRepository;
@@ -39,6 +49,7 @@ public class VentaServiceImpl implements VentaService {
 
     @Override
     @Transactional
+    @CacheEvict(cacheNames = "productos", allEntries = true)
     public VentaResponseDTO registrar(VentaRequestDTO request) {
         Cliente cliente = clienteRepository.findById(request.getClienteId())
                         .orElseThrow(() ->new RecursoNoEncontradoException("Cliente no encontrado con id: "+ request.getClienteId()));
@@ -94,16 +105,29 @@ public class VentaServiceImpl implements VentaService {
     @Override
     @Transactional(readOnly = true)
     public VentaResponseDTO buscar(Long id) {
+        long inicio = System.currentTimeMillis();
+        LOG.info("Inicio buscar venta por id | id={}", id);
 
-        Venta venta = ventaRepository.findById(id).orElseThrow(() ->
-                                new RecursoNoEncontradoException("Venta no encontrada con id: "+ id));
-        return convertirResponse(venta);
+        Venta venta = ventaRepository.findById(id)
+                .orElseThrow(() -> new RecursoNoEncontradoException(
+                        "Venta no encontrada con id: " + id
+                ));
+
+        VentaResponseDTO response = convertirResponse(venta);
+        LOG.info("Fin buscar venta por id | id={} | duracionMs={}", id, System.currentTimeMillis() - inicio);
+        return response;
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<VentaResponseDTO> listar() {
-        return ventaRepository.findAll().stream().map(this::convertirResponse).toList();
+        long inicio = System.currentTimeMillis();
+        LOG.info("Inicio listar todas las ventas");
+
+        List<VentaResponseDTO> resultado = ventaRepository.findAll().stream().map(this::convertirResponse).toList();
+
+        LOG.info("Fin listar todas las ventas | filas={} | duracionMs={}", resultado.size(), System.currentTimeMillis() - inicio);
+        return resultado;
     }
 
     private VentaResponseDTO convertirResponse(Venta venta) {
@@ -133,4 +157,93 @@ public class VentaServiceImpl implements VentaService {
                 detalles
         );
     }
+
+@Override
+@Transactional(readOnly = true)
+public List<VentaResponseDTO> buscar(
+        Long clienteId,
+        EstadoVenta estado,
+        LocalDate desde,
+        LocalDate hasta,
+        String ordenarPor,
+        String direccion) {
+
+    long inicio = System.currentTimeMillis();
+    LOG.info("Inicio buscar ventas | clienteId={} | estado={} | desde={} | hasta={} | ordenarPor={} | direccion={}",
+            clienteId, estado, desde, hasta, ordenarPor, direccion);
+
+    if (desde != null
+            && hasta != null
+            && desde.isAfter(hasta)) {
+
+        throw new ReglaNegocioException(
+                "El rango de fechas es inválido: 'desde' ("
+                        + desde
+                        + ") es posterior a 'hasta' ("
+                        + hasta + ")");
+    }
+
+    Sort sort = construirSort(ordenarPor, direccion);
+
+    LocalDateTime desdeHora = (desde == null)
+            ? null
+            : desde.atStartOfDay();
+
+    LocalDateTime hastaHora = (hasta == null)
+            ? null
+            : hasta.atTime(LocalTime.MAX);
+
+    List<VentaResponseDTO> resultado =
+            ventaRepository
+                    .buscar(clienteId, estado, desdeHora, hastaHora, sort)
+                    .stream()
+                    .map(this::convertirResponse)
+                    .toList();
+
+    LOG.info("Fin buscar ventas | clienteId={} | estado={} | desde={} | hasta={} | orden={} {} | filas={} | duracionMs={}",
+            clienteId, estado, desde, hasta, ordenarPor, direccion,
+            resultado.size(),
+            System.currentTimeMillis() - inicio);
+
+    return resultado;
 }
+
+private static final String ORDEN_POR_DEFECTO = "fecha";
+    private static final Set<String> CAMPOS_ORDENABLES= Set.of("id" , "fecha", "total","estado");
+private Sort construirSort(String ordenarPor, String direccion) {
+
+    String campo = (ordenarPor == null || ordenarPor.isBlank())
+            ? ORDEN_POR_DEFECTO
+            : ordenarPor.trim();
+
+    if (!CAMPOS_ORDENABLES.contains(campo)) {
+
+        throw new ReglaNegocioException(
+                "El campo de ordenamiento '"
+                        + campo
+                        + "' no está permitido. Campos válidos: "
+                        + CAMPOS_ORDENABLES);
+    }
+
+    String sentido = (direccion == null || direccion.isBlank())
+            ? "desc"
+            : direccion.trim();
+
+    if (!sentido.equalsIgnoreCase("asc")
+            && !sentido.equalsIgnoreCase("desc")) {
+        throw new ReglaNegocioException(
+                "La dirección de ordenamiento '"
+                        + sentido
+                        + "' no está permitida. Valores válidos: asc, desc");
+    }
+
+    String propiedad = campo.equals("fecha") ? "fechaRegistro" : campo;
+
+    return sentido.equalsIgnoreCase("asc")
+            ? Sort.by(propiedad).ascending()
+            : Sort.by(propiedad).descending();
+}
+
+
+}
+
