@@ -21,6 +21,8 @@ springdoc:
     enabled: true
 
 logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{requestId}] %logger{36} - %msg%n"
   level:
     root: INFO
     pe.edu.upeu.PharmaBackend: DEBUG
