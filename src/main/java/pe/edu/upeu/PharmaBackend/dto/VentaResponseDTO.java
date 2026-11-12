@@ -8,6 +8,7 @@ import lombok.Setter;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+
 @AllArgsConstructor
 @NoArgsConstructor
 @Getter
@@ -24,5 +25,16 @@ public class VentaResponseDTO {
     private BigDecimal total;
 
     private List<DetalleVentaResponseDTO> detalles;
-}
+    private String creadoPor;
 
+    public VentaResponseDTO(Long id, LocalDateTime fechaRegistro, Long clienteId, String clienteNombre,
+                            String estado, BigDecimal total, List<DetalleVentaResponseDTO> detalles) {
+        this.id = id;
+        this.fechaRegistro = fechaRegistro;
+        this.clienteId = clienteId;
+        this.clienteNombre = clienteNombre;
+        this.estado = estado;
+        this.total = total;
+        this.detalles = detalles;
+    }
+}
