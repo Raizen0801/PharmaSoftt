@@ -35,3 +35,6 @@ build/
 PharmaSoft Angular/
 logs/
 .env
+
+*.docx
+*.pdf

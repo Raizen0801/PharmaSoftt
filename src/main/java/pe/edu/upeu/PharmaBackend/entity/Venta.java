@@ -35,6 +35,9 @@ public class Venta {
     @Column(nullable = false, length = 20)
     private EstadoVenta estado;
 
+    @Column(name = "creado_por", length = 50)
+    private String creadoPor;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "cliente_id",

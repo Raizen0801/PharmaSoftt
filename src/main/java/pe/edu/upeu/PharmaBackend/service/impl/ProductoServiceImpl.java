@@ -12,6 +12,11 @@ import pe.edu.upeu.PharmaBackend.entity.Categoria;
 import pe.edu.upeu.PharmaBackend.entity.Producto;
 import pe.edu.upeu.PharmaBackend.exception.RecursoNoEncontradoException;
 import pe.edu.upeu.PharmaBackend.exception.ReglaNegocioException;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.slf4j.MDC;
+import pe.edu.upeu.PharmaBackend.event.AuditoriaEvent;
 import pe.edu.upeu.PharmaBackend.repository.CategoriaRepository;
 import pe.edu.upeu.PharmaBackend.repository.ProductoRepository;
 import pe.edu.upeu.PharmaBackend.service.service.ProductoService;
@@ -24,11 +29,14 @@ public class ProductoServiceImpl implements ProductoService {
 
     private final ProductoRepository productoRepository;
     private final CategoriaRepository categoriaRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ProductoServiceImpl(ProductoRepository productoRepository,
-                               CategoriaRepository categoriaRepository) {
+                               CategoriaRepository categoriaRepository,
+                               ApplicationEventPublisher eventPublisher) {
         this.productoRepository = productoRepository;
         this.categoriaRepository = categoriaRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -52,6 +60,22 @@ public class ProductoServiceImpl implements ProductoService {
         producto.setCategoria(categoria);
 
         Producto prodCreado = productoRepository.save(producto);
+
+        String usuarioActual = "admin";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            usuarioActual = auth.getName();
+        }
+
+        String requestId = MDC.get("requestId");
+        eventPublisher.publishEvent(new AuditoriaEvent(
+                usuarioActual,
+                "PRODUCTO_CREADO",
+                "Producto",
+                prodCreado.getId(),
+                "Producto creado: " + prodCreado.getNombre() + ", Precio: S/ " + prodCreado.getPrecio() + ", Stock: " + prodCreado.getStock(),
+                requestId
+        ));
 
         return convertirResponse(prodCreado);
     }

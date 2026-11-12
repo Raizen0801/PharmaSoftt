@@ -12,6 +12,11 @@ import pe.edu.upeu.PharmaBackend.entity.Categoria;
 import pe.edu.upeu.PharmaBackend.exception.RecursoNoEncontradoException;
 import pe.edu.upeu.PharmaBackend.exception.ReglaNegocioException;
 import pe.edu.upeu.PharmaBackend.repository.CategoriaRepository;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.slf4j.MDC;
+import pe.edu.upeu.PharmaBackend.event.AuditoriaEvent;
 import pe.edu.upeu.PharmaBackend.repository.ProductoRepository;
 import pe.edu.upeu.PharmaBackend.service.service.CategoriaService;
 
@@ -23,11 +28,14 @@ public class CategoriaServiceImpl implements CategoriaService {
 
     private final CategoriaRepository categoriaRepository;
     private final ProductoRepository productoRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public CategoriaServiceImpl(CategoriaRepository categoriaRepository,
-                                ProductoRepository productoRepository) {
+                                ProductoRepository productoRepository,
+                                ApplicationEventPublisher eventPublisher) {
         this.categoriaRepository = categoriaRepository;
         this.productoRepository = productoRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -108,6 +116,22 @@ public class CategoriaServiceImpl implements CategoriaService {
         }
 
         categoriaRepository.delete(categoria);
+
+        String usuarioActual = "admin";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            usuarioActual = auth.getName();
+        }
+
+        String requestId = MDC.get("requestId");
+        eventPublisher.publishEvent(new AuditoriaEvent(
+                usuarioActual,
+                "CATEGORIA_ELIMINADA",
+                "Categoria",
+                aLong,
+                "Categoría eliminada: " + categoria.getNombre(),
+                requestId
+        ));
     }
 
     @Override

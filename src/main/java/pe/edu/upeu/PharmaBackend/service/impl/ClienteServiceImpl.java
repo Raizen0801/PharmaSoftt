@@ -12,6 +12,12 @@ import pe.edu.upeu.PharmaBackend.exception.ReglaNegocioException;
 import pe.edu.upeu.PharmaBackend.repository.ClienteRepository;
 import pe.edu.upeu.PharmaBackend.service.service.ClienteService;
 
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.slf4j.MDC;
+import pe.edu.upeu.PharmaBackend.event.AuditoriaEvent;
+
 import java.util.List;
 
 @Service
@@ -22,10 +28,13 @@ public class ClienteServiceImpl
             LoggerFactory.getLogger(ClienteServiceImpl.class);
 
     private final ClienteRepository clienteRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ClienteServiceImpl(
-            ClienteRepository clienteRepository) {
+            ClienteRepository clienteRepository,
+            ApplicationEventPublisher eventPublisher) {
         this.clienteRepository = clienteRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -77,6 +86,22 @@ public class ClienteServiceImpl
 
         Cliente guardado =
                 clienteRepository.save(cliente);
+
+        String usuarioActual = "vendedor";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            usuarioActual = auth.getName();
+        }
+
+        String requestId = MDC.get("requestId");
+        eventPublisher.publishEvent(new AuditoriaEvent(
+                usuarioActual,
+                "CLIENTE_REGISTRADO",
+                "Cliente",
+                guardado.getId(),
+                "DNI: " + guardado.getDni() + ", Nombre: " + guardado.getNombres() + " " + guardado.getApellidos(),
+                requestId
+        ));
 
         log.info(
                 "Cliente registrado correctamente id={}",

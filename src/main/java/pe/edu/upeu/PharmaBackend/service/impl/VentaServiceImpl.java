@@ -21,7 +21,12 @@ import pe.edu.upeu.PharmaBackend.repository.ProductoRepository;
 import pe.edu.upeu.PharmaBackend.repository.VentaRepository;
 import pe.edu.upeu.PharmaBackend.service.service.VentaService;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.slf4j.MDC;
+import pe.edu.upeu.PharmaBackend.event.AuditoriaEvent;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -36,15 +41,18 @@ public class VentaServiceImpl implements VentaService {
     private final VentaRepository ventaRepository;
     private final ClienteRepository clienteRepository;
     private final ProductoRepository productoRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public VentaServiceImpl(
             VentaRepository ventaRepository,
             ClienteRepository clienteRepository,
-            ProductoRepository productoRepository) {
+            ProductoRepository productoRepository,
+            ApplicationEventPublisher eventPublisher) {
 
         this.ventaRepository = ventaRepository;
         this.clienteRepository = clienteRepository;
         this.productoRepository = productoRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -58,6 +66,13 @@ public class VentaServiceImpl implements VentaService {
             throw new ReglaNegocioException("No se puede registrar una venta para un cliente inactivo");
         }
         Venta venta = new Venta();
+
+        String usuarioActual = "vendedor";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
+            usuarioActual = auth.getName();
+        }
+        venta.setCreadoPor(usuarioActual);
 
         venta.setCliente(cliente);
 
@@ -97,7 +112,17 @@ public class VentaServiceImpl implements VentaService {
 
         venta.setTotal(total);
 
-        Venta guardada =ventaRepository.save(venta);
+        Venta guardada = ventaRepository.save(venta);
+
+        String requestId = MDC.get("requestId");
+        eventPublisher.publishEvent(new AuditoriaEvent(
+                usuarioActual,
+                "VENTA_REGISTRADA",
+                "Venta",
+                guardada.getId(),
+                "Total: S/ " + guardada.getTotal() + ", Cliente: " + cliente.getNombres() + " " + cliente.getApellidos(),
+                requestId
+        ));
 
         return convertirResponse(guardada);
     }
@@ -147,7 +172,7 @@ public class VentaServiceImpl implements VentaService {
 
         String clienteNombre = venta.getCliente().getNombres()+ " "+ venta.getCliente().getApellidos();
 
-        return new VentaResponseDTO(
+        VentaResponseDTO resp = new VentaResponseDTO(
                 venta.getId(),
                 venta.getFechaRegistro(),
                 venta.getCliente().getId(),
@@ -156,6 +181,8 @@ public class VentaServiceImpl implements VentaService {
                 venta.getTotal(),
                 detalles
         );
+        resp.setCreadoPor(venta.getCreadoPor());
+        return resp;
     }
 
 @Override
